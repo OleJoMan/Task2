@@ -1,13 +1,21 @@
 package Stub;
+
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
+import com.esotericsoftware.kryo.io.Output;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import Msg.Msg;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
+import java.io.ByteArrayOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Properties;
 
 public class Stub {
@@ -30,21 +38,38 @@ public class Stub {
         consumer.subscribe(Arrays.asList(topicName));
         System.out.println("Subscribed to topic " + topicName);
         try (FileWriter fileWriter = new FileWriter("MSGs.csv", true);) {
+            String id;
+            Date date;
             while (true) {
-                ConsumerRecords<String, byte[]> records = consumer.poll( 1);
+                ConsumerRecords<String, byte[]> records = consumer.poll(1);
                 for (ConsumerRecord<String, byte[]> record : records) {
                     Msg msg = deserialize(record.value());
-                    System.out.println(msg.getId() + " " + msg.getDate());
-                    fileWriter.write(msg.getId() + ";" + msg.getDate() + System.lineSeparator());
+                    id = msg.getId();
+                    date = msg.getDate();
+                    System.out.println(id + " " + date);
+                    fileWriter.write(id + ";" + date + System.lineSeparator());
                     fileWriter.flush();
+                    Thread.sleep(40000);
+                    Producer<String, byte[]> answerProd = new KafkaProducer<String, byte[]>(props);
+                    answerProd.send(new ProducerRecord<String, byte[]>("response", serialize(new Response(id, "OK"))));
                 }
             }
         } catch (IOException e) {
             System.out.println(e);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
     public static Msg deserialize(byte[] data) {
         return (Msg) KRYO.readClassAndObject(new Input(data));
+    }
+
+    public static byte[] serialize(Response object) {
+        ByteArrayOutputStream objStream = new ByteArrayOutputStream();
+        Output objOutput = new Output(objStream);
+        KRYO.writeClassAndObject(objOutput, object);
+        objOutput.close();
+        return objStream.toByteArray();
     }
 }
